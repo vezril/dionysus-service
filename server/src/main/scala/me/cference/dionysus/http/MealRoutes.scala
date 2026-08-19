@@ -52,7 +52,12 @@ object MealRoutes extends JsonSupport:
     case other => Left(s"unknown line type: $other")
 
   private def fromRequest(req: MealRequest): Either[String, Meal] =
-    Try(Instant.parse(req.eatenAt)) match
+    // Truncated to whole seconds: instants are stored as ISO strings and
+    // range-compared lexicographically (MealRepository.listBetween) — a
+    // fractional-second value sorts before its own whole-second form
+    // ('.' < 'Z'), which misattributed midnight-adjacent meals to the
+    // previous day (found in cross-validation review).
+    Try(Instant.parse(req.eatenAt).truncatedTo(java.time.temporal.ChronoUnit.SECONDS)) match
       case Failure(_: DateTimeParseException) =>
         Left(s"eatenAt is not a valid ISO-8601 instant: ${req.eatenAt}")
       case Failure(other) => throw other

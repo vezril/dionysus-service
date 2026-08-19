@@ -39,6 +39,10 @@ The system SHALL reject a batch-portion line whose `portions` would cause the re
 - **WHEN** a batch has `servingsMade: 4` with 3 portions already logged, and a client submits a new line for `portions: 1`
 - **THEN** the system creates the line, leaving 0 portions remaining
 
+#### Scenario: Multiple lines for the same batch in one meal are validated as a sum
+- **WHEN** a batch has 2 portions remaining and a single meal submission contains two batch-portion lines for it of 1.5 portions each
+- **THEN** the system rejects the meal, since the lines total 3 portions against 2 remaining
+
 ### Requirement: A direct-consumable line references a directly-loggable ingredient
 The system SHALL allow a meal line to reference an `ingredientId` and a `quantity`/`unit`, provided that ingredient is flagged `directlyLoggable`. The line's nutrition contribution SHALL be that ingredient's nutrition scaled by the quantity.
 

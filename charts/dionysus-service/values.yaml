@@ -25,6 +25,10 @@ env:
   # (build.sbt) distinct from the app's own read-only WORKDIR
   # (/opt/docker) — see build.sbt's dockerCommands comment for why.
   dbPath: /data/dionysus.db
+  # IANA zone the day-log rollup groups meals by. MUST match the
+  # dionysus-planner deployment's DIONYSUS_TZ so both sides agree on where
+  # a calendar day begins. Empty = UTC.
+  timezone: ""
 
 persistence:
   # k3s's bundled dynamic provisioner. A different StorageClass may be

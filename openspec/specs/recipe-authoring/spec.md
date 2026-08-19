@@ -29,7 +29,7 @@ The system SHALL resolve every recipe line's ingredient by its system-assigned I
 - **THEN** the system rejects the request with a validation error
 
 ### Requirement: A recipe's per-serving nutrition is derived from its lines
-The system SHALL compute a recipe's per-serving nutrition (calories, protein, carbs, fat, sodium, and alcohol where applicable) as the sum of each line's ingredient nutrition scaled by that line's quantity, divided by the recipe's `servings`.
+The system SHALL compute a recipe's per-serving nutrition (calories, protein, carbs, fat, and sodium) as the sum of each line's ingredient nutrition scaled by that line's quantity, divided by the recipe's `servings`.
 
 #### Scenario: Per-serving sodium reflects all lines
 - **WHEN** a recipe with `servings: 4` has two lines whose combined sodium contribution is 800mg

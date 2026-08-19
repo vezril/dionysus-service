@@ -97,3 +97,57 @@ final class LogRoutesSpec
       status shouldBe StatusCodes.BadRequest
     }
   }
+
+  test("GET /api/log/{date}/junk is not matched (404), not silently treated as {date}") {
+    Get("/api/log/2026-08-19/junk") ~> freshRoutes() ~> check {
+      status shouldBe StatusCodes.NotFound
+    }
+  }
+
+  // Regression (cross-validation review): a naive UTC calendar day flips at 8pm in Montreal.
+  // With a configured zone, a 9pm-Toronto dinner (01:00Z next UTC day) belongs to the Toronto
+  // calendar day it was actually eaten on.
+  test("day boundaries follow the configured timezone (spec: nutrition-rollup)") {
+    val db = freshDb()
+    val ingredientRepo = new IngredientRepository(db)
+    val recipeRepo = new RecipeRepository(db, ingredientRepo)
+    val pantryRepo = new PantryRepository(db)
+    val batchRepo = new BatchRepository(db, recipeRepo, pantryRepo)
+    val mealRepo = new MealRepository(
+      db,
+      batchRepo,
+      recipeRepo,
+      ingredientRepo,
+      java.time.ZoneId.of("America/Toronto")
+    )
+
+    val ingredient = Ingredient("Salty Thing", Nutrition(40, 1, 9, 0, 4).toOption.get).toOption.get
+    Await.result(ingredientRepo.create(ingredient), 5.seconds)
+    val recipe =
+      Recipe("Recipe", servings = 4, List(RecipeLine(1L, quantity = 200, unit = "g"))).toOption.get
+    Await.result(recipeRepo.create(recipe), 5.seconds)
+    val batch = Batch(
+      recipeId = 1L,
+      cookedAt = Instant.parse("2026-08-19T12:00:00Z"),
+      servingsMade = 8
+    ).toOption.get
+    Await.result(batchRepo.create(batch), 5.seconds)
+
+    // 9:00pm Aug 19 in Toronto == 2026-08-20T01:00:00Z.
+    val dinner =
+      Meal(
+        Instant.parse("2026-08-20T01:00:00Z"),
+        List(MealLine.BatchPortionLine(1L, 1))
+      ).toOption.get
+    Await.result(mealRepo.create(dinner), 5.seconds)
+
+    val routes = Route.seal(LogRoutes(mealRepo))
+    Get("/api/log/2026-08-19") ~> routes ~> check {
+      status shouldBe StatusCodes.OK
+      responseAs[DayLogResponse].meals should have size 1
+    }
+    Get("/api/log/2026-08-20") ~> routes ~> check {
+      status shouldBe StatusCodes.OK
+      responseAs[DayLogResponse].meals shouldBe empty
+    }
+  }

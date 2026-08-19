@@ -7,14 +7,15 @@ import me.cference.dionysus.domain.ingredient.Nutrition
 import me.cference.dionysus.domain.meal.{Meal, MealLine, MealNutrition}
 import slick.jdbc.SQLiteProfile.api.*
 
-import java.time.{Instant, LocalDate, ZoneOffset}
+import java.time.{Instant, LocalDate, ZoneId, ZoneOffset}
 import scala.concurrent.{ExecutionContext, Future}
 
 final class MealRepository(
     db: Database,
     batches: BatchRepository,
     recipes: RecipeRepository,
-    ingredients: IngredientRepository
+    ingredients: IngredientRepository,
+    dayZone: ZoneId = ZoneOffset.UTC
 )(using ExecutionContext):
   import MealTable.{mealLines, meals}
 
@@ -65,13 +66,14 @@ final class MealRepository(
       .map(_.flatten)
 
   /**
-   * Meals whose `eatenAt` falls on `date`, interpreted as a UTC calendar day (openspec:
-   * meal-planning-health, capability `nutrition-rollup` — no timezone handling beyond UTC in this
-   * phase, per design.md's scope).
+   * Meals whose `eatenAt` falls on `date` in the configured `dayZone` (openspec:
+   * meal-planning-health, capability `nutrition-rollup`). Originally UTC-only per design.md's
+   * phase-1 scope; cross-validation showed a naive UTC day flips at 8pm in Montreal, so the zone is
+   * now configurable via `dionysus.timezone` / `DIONYSUS_TZ` (default UTC).
    */
   def listOnDate(date: LocalDate): Future[Seq[Meal]] =
-    val start = date.atStartOfDay(ZoneOffset.UTC).toInstant
-    val end = date.plusDays(1).atStartOfDay(ZoneOffset.UTC).toInstant
+    val start = date.atStartOfDay(dayZone).toInstant
+    val end = date.plusDays(1).atStartOfDay(dayZone).toInstant
     listBetween(start, end)
 
   def totalNutrition(meal: Meal): Future[Nutrition] =
@@ -119,29 +121,41 @@ final class MealRepository(
     }
 
   private def validateLines(lines: List[MealLine]): Future[Either[String, Unit]] =
-    Future
-      .traverse(lines) {
-        case MealLine.BatchPortionLine(batchId, portions) =>
-          batches.get(batchId).map {
-            case None => Some(s"unknown batchId: $batchId")
-            case Some(withRemaining) if portions > withRemaining.remainingPortions =>
-              Some(
-                s"portions ($portions) exceeds remaining (${withRemaining.remainingPortions}) for batchId=$batchId"
-              )
-            case _ => None
-          }
-        case MealLine.DirectConsumableLine(ingredientId, _, _) =>
-          ingredients
-            .isDirectlyLoggable(ingredientId)
-            .map(ok =>
-              if ok then None else Some(s"ingredientId=$ingredientId is not directlyLoggable")
-            )
+    // Batch portions are validated as a SUM per batch across the whole meal —
+    // per-line checks against the same remaining-portions snapshot let one
+    // meal with two lines for the same batch over-log it (found in
+    // cross-validation review; spec: meal-logging "total logged portions").
+    val portionsByBatch: Map[Long, Double] =
+      lines
+        .collect { case MealLine.BatchPortionLine(batchId, portions) => batchId -> portions }
+        .groupMapReduce(_._1)(_._2)(_ + _)
+    val directIngredientIds: List[Long] =
+      lines.collect { case MealLine.DirectConsumableLine(ingredientId, _, _) =>
+        ingredientId
+      }.distinct
+
+    val batchChecks = Future.traverse(portionsByBatch.toList) { case (batchId, totalPortions) =>
+      batches.get(batchId).map {
+        case None => Some(s"unknown batchId: $batchId")
+        case Some(withRemaining) if totalPortions > withRemaining.remainingPortions =>
+          Some(
+            s"portions ($totalPortions total across this meal) exceeds remaining (${withRemaining.remainingPortions}) for batchId=$batchId"
+          )
+        case _ => None
       }
-      .map(_.flatten)
-      .map {
-        case Nil => Right(())
-        case errs => Left(errs.mkString("; "))
-      }
+    }
+    val ingredientChecks = Future.traverse(directIngredientIds) { ingredientId =>
+      ingredients
+        .isDirectlyLoggable(ingredientId)
+        .map(ok => if ok then None else Some(s"ingredientId=$ingredientId is not directlyLoggable"))
+    }
+
+    for
+      batchErrs <- batchChecks
+      ingredientErrs <- ingredientChecks
+    yield (batchErrs.flatten ++ ingredientErrs.flatten) match
+      case Nil => Right(())
+      case errs => Left(errs.mkString("; "))
 
   private def toRow(mealId: Long, line: MealLine): MealLineRow = line match
     case MealLine.BatchPortionLine(batchId, portions) =>

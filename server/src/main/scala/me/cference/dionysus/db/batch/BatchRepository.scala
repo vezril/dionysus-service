@@ -17,21 +17,27 @@ final class BatchRepository(db: Database, recipes: RecipeRepository, pantry: Pan
   import BatchTable.batches
 
   /**
-   * Validates the recipe exists, inserts the batch, then decrements pantry stock for every recipe
-   * line (design.md Decision 4 / pantry-stock capability).
+   * Validates the recipe exists, then inserts the batch and decrements pantry stock for every
+   * recipe line in ONE transaction (design.md Decision 4 / pantry-stock capability) — a partial
+   * failure must not leave a committed batch with half-applied decrements. Duplicate ingredient
+   * lines are summed first so the upsert never touches the same row twice.
    */
   def create(batch: Batch): Future[Either[String, Batch]] =
     recipes.get(batch.recipeId).flatMap {
       case None => Future.successful(Left(s"unknown recipeId: ${batch.recipeId}"))
       case Some(recipe) =>
         val row = BatchRow(None, batch.recipeId, batch.cookedAt.toString, batch.servingsMade)
-        for
-          newId <- db.run((batches returning batches.map(_.id)) += row)
-          _ <- Future.traverse(recipe.lines) { line =>
-            val delta = PantryMath.decrementFor(line.quantity, recipe.servings, batch.servingsMade)
-            pantry.adjust(line.ingredientId, -delta)
-          }
-        yield Right(batch.withId(newId))
+        val deltaByIngredient: Map[Long, Double] = recipe.lines
+          .groupMapReduce(_.ingredientId)(line =>
+            PantryMath.decrementFor(line.quantity, recipe.servings, batch.servingsMade)
+          )(_ + _)
+        val action = for
+          newId <- (batches returning batches.map(_.id)) += row
+          _ <- DBIO.sequence(deltaByIngredient.toList.map { case (ingredientId, delta) =>
+            pantry.adjustAction(ingredientId, -delta)
+          })
+        yield newId
+        db.run(action.transactionally).map(newId => Right(batch.withId(newId)))
     }
 
   def list(): Future[Seq[BatchWithRemaining]] =

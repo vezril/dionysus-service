@@ -3,7 +3,7 @@
 ## Requirements
 
 ### Requirement: A meal's nutrition total is the sum of its lines
-The system SHALL compute a meal's total nutrition (calories, protein, carbs, fat, sodium, and alcohol where applicable) as the sum of every line's nutrition contribution, and SHALL include this total when a meal is read.
+The system SHALL compute a meal's total nutrition (calories, protein, carbs, fat, and sodium) as the sum of every line's nutrition contribution, and SHALL include this total when a meal is read. (Alcohol aggregation is deferred: `abvPercent` is stored on ingredients but not rolled up — converting a percentage into a consumed amount requires the unit system that is out of scope this phase.)
 
 #### Scenario: Meal total reflects both line types
 - **WHEN** a meal has a batch-portion line contributing 200mg sodium and a direct-consumable line contributing 50mg sodium
@@ -17,7 +17,11 @@ The system SHALL always include a sodium total (defaulting to `0` when no lines 
 - **THEN** the day's rollup reports `sodiumMg: 0`, not a missing or null field
 
 ### Requirement: A day's nutrition is the sum of every meal eaten that day
-The system SHALL compute a day's total nutrition as the sum of every meal whose `eatenAt` falls on that calendar date, exposed via `GET /api/log/{date}`.
+The system SHALL compute a day's total nutrition as the sum of every meal whose `eatenAt` falls on that calendar date in the configured timezone (`dionysus.timezone` / `DIONYSUS_TZ`, default UTC), exposed via `GET /api/log/{date}`. Day boundaries MUST follow the configured zone — a naive UTC day splits the user's real day (e.g. it rolls over at 8pm in Montreal).
+
+#### Scenario: Day boundaries follow the configured timezone
+- **WHEN** the timezone is `America/Toronto` and a meal's `eatenAt` is `2026-08-20T01:00:00Z` (9pm on Aug 19 in Toronto)
+- **THEN** `GET /api/log/2026-08-19` includes that meal and `GET /api/log/2026-08-20` does not
 
 #### Scenario: Day rollup sums multiple meals
 - **WHEN** two meals are logged on the same date, contributing 1200mg and 800mg of sodium respectively

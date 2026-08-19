@@ -132,6 +132,28 @@ final class IngredientRoutesSpec
     }
   }
 
+  // With foreign_keys=ON (Db.open), pantry_stock's FK to ingredient would block the delete
+  // unless the stock row is removed in the same transaction.
+  test(
+    "DELETE /api/ingredients/{id} succeeds for an unreferenced ingredient that has pantry stock"
+  ) {
+    val db = freshDb()
+    val ingredientRepo = new IngredientRepository(db)
+    val pantryRepo = new PantryRepository(db)
+    val routes = Route.seal(IngredientRoutes(ingredientRepo))
+
+    val onion = Ingredient("Onion", Nutrition(40, 1, 9, 0, 4).toOption.get).toOption.get
+    val id = Await.result(ingredientRepo.create(onion), 5.seconds).id.get
+    Await.result(pantryRepo.adjust(id, 500), 5.seconds)
+
+    Delete(s"/api/ingredients/$id") ~> routes ~> check {
+      status shouldBe StatusCodes.NoContent
+    }
+    Get(s"/api/ingredients/$id") ~> routes ~> check {
+      status shouldBe StatusCodes.NotFound
+    }
+  }
+
   // Regression: deleting an ingredient still referenced by a recipe line left `GET /api/recipes`
   // throwing a 500 the next time it tried to resolve that line's nutrition (discovered live on
   // the homelab deployment — a test-data cleanup deleted a referenced ingredient).
