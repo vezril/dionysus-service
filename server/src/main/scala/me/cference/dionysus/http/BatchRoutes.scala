@@ -33,7 +33,8 @@ object BatchRoutes extends JsonSupport:
   given RootJsonFormat[List[BatchResponse]] = listFormat[BatchResponse]
 
   private def fromRequest(req: BatchRequest): Either[String, Batch] =
-    Try(Instant.parse(req.cookedAt)) match
+    // Whole seconds only — same string-comparison rationale as MealRoutes.
+    Try(Instant.parse(req.cookedAt).truncatedTo(java.time.temporal.ChronoUnit.SECONDS)) match
       case Failure(_: DateTimeParseException) =>
         Left(s"cookedAt is not a valid ISO-8601 instant: ${req.cookedAt}")
       case Failure(other) => throw other

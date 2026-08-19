@@ -40,7 +40,8 @@ object LogRoutes extends JsonSupport:
     )
 
   def apply(mealRepo: MealRepository)(using ExecutionContext): Route =
-    pathPrefix("api" / "log" / Segment) { dateSegment =>
+    // `path`, not `pathPrefix`: the prefix form matched /api/log/{date}/anything.
+    path("api" / "log" / Segment) { dateSegment =>
       get {
         Try(LocalDate.parse(dateSegment)) match
           case Failure(_: DateTimeParseException) =>

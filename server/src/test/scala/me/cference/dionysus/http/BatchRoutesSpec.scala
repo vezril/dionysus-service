@@ -83,6 +83,34 @@ final class BatchRoutesSpec
     }
   }
 
+  // Regression (cross-validation review): pantry decrements previously ran as separate concurrent
+  // transactions per line — duplicate ingredient lines could race the upsert INSERT and a mid-way
+  // failure left a committed batch with partial decrements. Now one transaction, deltas summed.
+  test(
+    "POST /api/batches sums pantry decrements for duplicate ingredient lines deterministically"
+  ) {
+    val db = freshDb()
+    val ingredientRepo = new IngredientRepository(db)
+    val recipeRepo = new RecipeRepository(db, ingredientRepo)
+    val pantryRepo = new PantryRepository(db)
+    val batchRepo = new BatchRepository(db, recipeRepo, pantryRepo)
+    val routes = Route.seal(BatchRoutes(batchRepo))
+
+    val onion = Ingredient("Onion", Nutrition(40, 1, 9, 0, 4).toOption.get).toOption.get
+    val id = Await.result(ingredientRepo.create(onion), 5.seconds).id.get
+    val recipe = Recipe(
+      "Double Onion",
+      servings = 4,
+      List(RecipeLine(id, quantity = 100, unit = "g"), RecipeLine(id, quantity = 100, unit = "g"))
+    ).toOption.get
+    Await.result(recipeRepo.create(recipe), 5.seconds)
+
+    Post("/api/batches", BatchRequest(1, "2026-08-19T12:00:00Z", 4)) ~> routes ~> check {
+      status shouldBe StatusCodes.Created
+    }
+    Await.result(pantryRepo.getOnHand(id), 5.seconds) shouldBe -200.0
+  }
+
   test("GET /api/batches lists created batches with computed remaining portions") {
     val fixture = freshFixture()
     Post("/api/batches", BatchRequest(1, "2026-08-19T12:00:00Z", 4)) ~> fixture.routes ~> check {

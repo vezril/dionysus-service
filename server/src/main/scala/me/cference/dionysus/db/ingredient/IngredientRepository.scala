@@ -32,7 +32,15 @@ final class IngredientRepository(db: Database)(using ExecutionContext):
     isReferenced(id).flatMap {
       case true =>
         Future.successful(Left("cannot delete an ingredient referenced by a recipe or meal"))
-      case false => db.run(ingredients.filter(_.id === id).delete).map(_ => Right(()))
+      case false =>
+        // pantry_stock's PK references ingredient(id); with foreign_keys=ON
+        // (Db.open) the stock row must go in the same transaction or the
+        // ingredient delete itself would trip the FK.
+        val action = for
+          _ <- sqlu"DELETE FROM pantry_stock WHERE ingredient_id = $id"
+          _ <- ingredients.filter(_.id === id).delete
+        yield ()
+        db.run(action.transactionally).map(Right(_))
     }
 
   private def isReferenced(id: Long): Future[Boolean] =

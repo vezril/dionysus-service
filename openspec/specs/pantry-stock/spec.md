@@ -16,6 +16,17 @@ The system SHALL allow a client to set or adjust an ingredient's on-hand pantry 
 - **WHEN** a client submits a pantry adjustment adding `500` (grams) to an ingredient's on-hand quantity
 - **THEN** the system increases that ingredient's on-hand quantity by 500
 
+#### Scenario: Adjusting stock for a nonexistent ingredient is rejected
+- **WHEN** a client reads or adjusts stock for an ingredient ID that does not exist
+- **THEN** the system responds not-found — stock is an attribute of an ingredient, never a free-standing row
+
+### Requirement: Batch creation and its pantry decrements are atomic
+The system SHALL apply a batch's insert and all of its pantry decrements in a single transaction — a failure partway MUST leave neither a committed batch nor any partial decrement. Duplicate ingredient lines in a recipe SHALL be decremented as one summed adjustment.
+
+#### Scenario: Duplicate ingredient lines decrement once, summed
+- **WHEN** a batch is recorded for a recipe (servings=4) with two lines of 100g each for the SAME ingredient, with `servingsMade: 4`
+- **THEN** that ingredient's on-hand quantity decreases by exactly 200g
+
 ### Requirement: Cooking a batch decrements pantry stock
 The system SHALL decrement each recipe line's ingredient on-hand quantity by that line's quantity multiplied by the batch's `servingsMade` divided by the recipe's `servings`, at the moment a batch is recorded.
 

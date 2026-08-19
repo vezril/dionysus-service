@@ -21,6 +21,11 @@ spec:
       labels:
         {{- include "dionysus-service.selectorLabels" . | nindent 8 }}
     spec:
+      # The image runs as uid 1001, gid 0; fsGroup makes any mounted volume
+      # group-writable for it even on StorageClasses stricter than k3s's
+      # local-path (which happens to provision 0777 dirs).
+      securityContext:
+        fsGroup: 0
       containers:
         - name: {{ .Chart.Name }}
           image: "{{ .Values.image.repository }}:{{ .Values.image.tag | default .Chart.AppVersion }}"
@@ -34,6 +39,10 @@ spec:
               value: {{ .Values.service.port | quote }}
             - name: DIONYSUS_DB_PATH
               value: {{ .Values.env.dbPath | quote }}
+            {{- if .Values.env.timezone }}
+            - name: DIONYSUS_TZ
+              value: {{ .Values.env.timezone | quote }}
+            {{- end }}
           volumeMounts:
             - name: data
               mountPath: {{ .Values.persistence.mountPath }}

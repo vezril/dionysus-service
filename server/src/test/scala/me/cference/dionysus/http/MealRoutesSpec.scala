@@ -87,6 +87,49 @@ final class MealRoutesSpec
     }
   }
 
+  // Regression (cross-validation review): per-line checks against the same remaining-portions
+  // snapshot let one meal with several lines for the same batch over-log it. The sum across the
+  // meal must be validated, not each line independently.
+  test("POST /api/meals rejects multiple lines for the same batch whose SUM exceeds remaining") {
+    val request = MealRequest(
+      eatenAt = "2026-08-19T18:00:00Z",
+      lines = List(
+        MealLineJson("batch_portion", batchId = Some(1L), portions = Some(3)),
+        MealLineJson("batch_portion", batchId = Some(1L), portions = Some(3))
+      )
+    )
+    Post("/api/meals", request) ~> freshRoutes() ~> check {
+      status shouldBe StatusCodes.BadRequest
+    }
+  }
+
+  test("POST /api/meals accepts multiple lines for the same batch summing to exactly remaining") {
+    val request = MealRequest(
+      eatenAt = "2026-08-19T18:00:00Z",
+      lines = List(
+        MealLineJson("batch_portion", batchId = Some(1L), portions = Some(2)),
+        MealLineJson("batch_portion", batchId = Some(1L), portions = Some(2))
+      )
+    )
+    Post("/api/meals", request) ~> freshRoutes() ~> check {
+      status shouldBe StatusCodes.Created
+    }
+  }
+
+  // Regression (cross-validation review): instants are stored as ISO strings and range-compared
+  // lexicographically; a fractional-second value sorts before its own whole-second form. The
+  // route truncates to whole seconds on write so day-boundary queries stay correct.
+  test("POST /api/meals truncates a fractional-second eatenAt to whole seconds") {
+    val request = MealRequest(
+      eatenAt = "2026-08-19T00:00:00.500Z",
+      lines = List(MealLineJson("batch_portion", batchId = Some(1L), portions = Some(1)))
+    )
+    Post("/api/meals", request) ~> freshRoutes() ~> check {
+      status shouldBe StatusCodes.Created
+      responseAs[MealResponse].eatenAt shouldBe "2026-08-19T00:00:00Z"
+    }
+  }
+
   test(
     "POST /api/meals rejects a direct-consumable line for an ingredient that is not directlyLoggable"
   ) {

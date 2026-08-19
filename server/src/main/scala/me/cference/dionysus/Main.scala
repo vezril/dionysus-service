@@ -55,13 +55,15 @@ object Main:
     val pantryRepo = new PantryRepository(db)
     val recipeRepo = new RecipeRepository(db, ingredientRepo)
     val batchRepo = new BatchRepository(db, recipeRepo, pantryRepo)
-    val mealRepo = new MealRepository(db, batchRepo, recipeRepo, ingredientRepo)
+    val mealRepo = new MealRepository(db, batchRepo, recipeRepo, ingredientRepo, cfg.timezone)
 
     // Readiness flips UP once the server is bound; withdrawn first on shutdown.
     val readiness = new AtomicBoolean(false)
     val routes =
       HelloRoutes() ~ HealthRoutes(BuildInfo.version, () => readiness.get()) ~
-        IngredientRoutes(ingredientRepo) ~ PantryRoutes(pantryRepo) ~ RecipeRoutes(recipeRepo) ~
+        IngredientRoutes(ingredientRepo) ~ PantryRoutes(pantryRepo, ingredientRepo) ~ RecipeRoutes(
+          recipeRepo
+        ) ~
         BatchRoutes(batchRepo) ~ MealRoutes(mealRepo) ~ LogRoutes(mealRepo)
 
     HttpServer.bind(routes, cfg.http.host, cfg.http.port).onComplete {
