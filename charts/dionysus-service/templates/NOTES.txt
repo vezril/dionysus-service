@@ -1,0 +1,29 @@
+dionysus-service has been deployed as {{ include "dionysus-service.fullname" . }}.
+
+NOTE: this runs as a fixed single replica — the service's SQLite storage is
+single-writer and cannot be horizontally scaled. There is no replica count
+to change.
+
+NOTE: this service has NO AUTHENTICATION in its current phase. It is safe
+to run on a private/internal network only. Do not enable ingress with a
+publicly-reachable host, and do not port-forward it to anything but your
+own trusted network.
+
+{{- if .Values.ingress.enabled }}
+
+Ingress is enabled. Once DNS/your router points at the cluster ingress:
+  http{{ if .Values.ingress.tls }}s{{ end }}://{{ .Values.ingress.host }}/
+{{- else }}
+
+No ingress is enabled. To reach the API, port-forward the Service:
+
+  kubectl port-forward svc/{{ include "dionysus-service.fullname" . }} 8080:{{ .Values.service.port }}
+
+Then try:
+  curl http://localhost:8080/health
+{{- end }}
+
+Data persists on a PersistentVolumeClaim ({{ include "dionysus-service.fullname" . }}-data,
+StorageClass "{{ .Values.persistence.storageClass }}"). If that StorageClass is
+"local-path" (k3s's bundled default), the volume — and therefore this pod —
+is pinned to whichever node it first schedules on.

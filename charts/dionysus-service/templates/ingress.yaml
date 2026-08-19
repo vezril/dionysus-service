@@ -1,0 +1,34 @@
+{{- if .Values.ingress.enabled -}}
+{{- if not .Values.ingress.host -}}
+{{- fail "ingress.enabled is true but ingress.host is empty — set ingress.host or leave ingress.enabled false" -}}
+{{- end -}}
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: {{ include "dionysus-service.fullname" . }}
+  labels:
+    {{- include "dionysus-service.labels" . | nindent 4 }}
+  {{- with .Values.ingress.annotations }}
+  annotations:
+    {{- toYaml . | nindent 4 }}
+  {{- end }}
+spec:
+  {{- if .Values.ingress.className }}
+  ingressClassName: {{ .Values.ingress.className }}
+  {{- end }}
+  {{- if .Values.ingress.tls }}
+  tls:
+    {{- toYaml .Values.ingress.tls | nindent 4 }}
+  {{- end }}
+  rules:
+    - host: {{ .Values.ingress.host }}
+      http:
+        paths:
+          - path: /
+            pathType: Prefix
+            backend:
+              service:
+                name: {{ include "dionysus-service.fullname" . }}
+                port:
+                  number: {{ .Values.service.port }}
+{{- end }}

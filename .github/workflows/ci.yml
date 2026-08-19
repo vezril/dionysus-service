@@ -74,3 +74,23 @@ jobs:
           curl -sSL "https://github.com/gitleaks/gitleaks/releases/download/v${V}/gitleaks_${V}_linux_x64.tar.gz" \
             | tar xz -C /tmp gitleaks
           /tmp/gitleaks detect --source . --redact --verbose
+
+  helm-lint:
+    # Not a required status check (openspec: helm-chart-k3s) — a cheap, fast
+    # sanity net so the chart can't silently bit-rot, not a merge gate.
+    # helm/kubectl are preinstalled on ubuntu-latest.
+    name: helm-lint
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+      - name: helm lint
+        run: helm lint charts/dionysus-service
+      - name: helm template (default values)
+        run: helm template dionysus-service charts/dionysus-service > /dev/null
+      - name: helm template (ingress.enabled without host must fail)
+        run: |
+          if helm template dionysus-service charts/dionysus-service --set ingress.enabled=true > /dev/null 2>&1; then
+            echo "::error::expected render to fail with ingress.enabled=true and no ingress.host set"
+            exit 1
+          fi
+          echo "OK: rendering failed as expected"
