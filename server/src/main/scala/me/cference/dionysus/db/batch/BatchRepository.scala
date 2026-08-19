@@ -34,6 +34,17 @@ final class BatchRepository(db: Database, recipes: RecipeRepository, pantry: Pan
         yield Right(batch.withId(newId))
     }
 
+  def list(): Future[Seq[BatchWithRemaining]] =
+    db.run(batches.result).flatMap { rows =>
+      Future.traverse(rows) { row =>
+        val b = toBatch(row)
+        loggedPortionsFor(b.id.getOrElse(throw IllegalStateException("batch row missing id"))).map {
+          logged =>
+            BatchWithRemaining(b, BatchMath.remainingPortions(b.servingsMade, logged))
+        }
+      }
+    }
+
   def get(id: Long): Future[Option[BatchWithRemaining]] =
     db.run(batches.filter(_.id === id).result.headOption).flatMap {
       case None => Future.successful(None)

@@ -35,6 +35,17 @@ The system SHALL compute a batch's remaining portions as `servingsMade` minus th
 - **WHEN** a batch has `servingsMade: 4`, one meal logs 1 portion on day 1, and another meal logs 2 portions on day 3
 - **THEN** the batch's computed remaining portions is 1, queryable at any time regardless of which day is "today"
 
+### Requirement: Batches can be listed
+The system SHALL allow listing every batch, each with its computed remaining portions, via `GET /api/batches`.
+
+#### Scenario: Listing batches
+- **WHEN** a client requests `GET /api/batches` after two batches have been created
+- **THEN** the response includes both batches, each with its own computed remaining portions
+
+#### Scenario: Listing on an empty database
+- **WHEN** a client requests `GET /api/batches` and no batches exist
+- **THEN** the response is an empty list
+
 ### Requirement: Deleting a batch requires no dependent meal lines
 The system SHALL reject deletion of a batch that has one or more meal-log lines referencing it, to avoid orphaning logged nutrition data.
 

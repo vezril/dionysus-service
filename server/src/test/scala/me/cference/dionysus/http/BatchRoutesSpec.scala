@@ -83,6 +83,27 @@ final class BatchRoutesSpec
     }
   }
 
+  test("GET /api/batches lists created batches with computed remaining portions") {
+    val fixture = freshFixture()
+    Post("/api/batches", BatchRequest(1, "2026-08-19T12:00:00Z", 4)) ~> fixture.routes ~> check {
+      status shouldBe StatusCodes.Created
+    }
+    Get("/api/batches") ~> fixture.routes ~> check {
+      status shouldBe StatusCodes.OK
+      val all = responseAs[List[BatchResponse]]
+      all should have size 1
+      all.head.recipeId shouldBe 1
+      all.head.remainingPortions shouldBe 4.0
+    }
+  }
+
+  test("GET /api/batches on an empty database returns an empty list") {
+    Get("/api/batches") ~> freshFixture().routes ~> check {
+      status shouldBe StatusCodes.OK
+      responseAs[List[BatchResponse]] shouldBe empty
+    }
+  }
+
   test("GET /api/batches/{id} for an unknown id returns 404") {
     Get("/api/batches/999") ~> freshFixture().routes ~> check {
       status shouldBe StatusCodes.NotFound
