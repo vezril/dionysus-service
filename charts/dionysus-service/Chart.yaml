@@ -1,0 +1,17 @@
+apiVersion: v2
+name: dionysus-service
+description: >-
+  Single-user, self-hosted meal-planning + eating-log API (Scala 3 + Pekko +
+  SQLite). Deploys as a fixed single-replica workload — SQLite storage is
+  single-writer and does not support horizontal scaling. API-only, no UI.
+type: application
+version: 0.1.0
+appVersion: "0.1.0"
+home: https://github.com/vezril/dionysus-service
+sources:
+  - https://github.com/vezril/dionysus-service
+keywords:
+  - meal-planning
+  - self-hosted
+  - pekko
+  - sqlite
