@@ -135,8 +135,8 @@ object IngredientRoutes extends JsonSupport:
             },
             delete {
               onSuccess(repo.delete(id)) {
-                case true => complete(StatusCodes.NoContent)
-                case false => complete(StatusCodes.NotFound)
+                case Left(err) => complete(StatusCodes.BadRequest -> ErrorResponse(err))
+                case Right(()) => complete(StatusCodes.NoContent)
               }
             }
           )

@@ -1,13 +1,24 @@
 package me.cference.dionysus.http
 
 import me.cference.dionysus.db.TestDb
+import me.cference.dionysus.db.batch.BatchRepository
 import me.cference.dionysus.db.ingredient.IngredientRepository
+import me.cference.dionysus.db.meal.MealRepository
+import me.cference.dionysus.db.pantry.PantryRepository
+import me.cference.dionysus.db.recipe.RecipeRepository
+import me.cference.dionysus.domain.ingredient.{Ingredient, Nutrition}
+import me.cference.dionysus.domain.meal.{Meal, MealLine}
+import me.cference.dionysus.domain.recipe.{Recipe, RecipeLine}
 import me.cference.dionysus.http.IngredientRoutes.IngredientJson
 import org.apache.pekko.http.scaladsl.model.{ContentTypes, HttpEntity, StatusCodes}
 import org.apache.pekko.http.scaladsl.server.Route
 import org.apache.pekko.http.scaladsl.testkit.ScalatestRouteTest
 import org.scalatest.funsuite.AnyFunSuite
 import org.scalatest.matchers.should.Matchers
+
+import java.time.Instant
+import scala.concurrent.Await
+import scala.concurrent.duration.DurationInt
 
 final class IngredientRoutesSpec
     extends AnyFunSuite
@@ -118,5 +129,58 @@ final class IngredientRoutesSpec
     }
     Get(s"/api/ingredients/$id") ~> routes ~> check {
       status shouldBe StatusCodes.NotFound
+    }
+  }
+
+  // Regression: deleting an ingredient still referenced by a recipe line left `GET /api/recipes`
+  // throwing a 500 the next time it tried to resolve that line's nutrition (discovered live on
+  // the homelab deployment — a test-data cleanup deleted a referenced ingredient).
+  test("DELETE /api/ingredients/{id} is rejected when a recipe line references it") {
+    val db = freshDb()
+    val ingredientRepo = new IngredientRepository(db)
+    val recipeRepo = new RecipeRepository(db, ingredientRepo)
+    val routes = Route.seal(IngredientRoutes(ingredientRepo))
+
+    val onion = Ingredient("Onion", Nutrition(40, 1, 9, 0, 4).toOption.get).toOption.get
+    val id = Await.result(ingredientRepo.create(onion), 5.seconds).id.get
+    Await.result(
+      recipeRepo.create(Recipe("Soup", servings = 4, List(RecipeLine(id, 200, "g"))).toOption.get),
+      5.seconds
+    )
+
+    Delete(s"/api/ingredients/$id") ~> routes ~> check {
+      status shouldBe StatusCodes.BadRequest
+    }
+    Get(s"/api/ingredients/$id") ~> routes ~> check {
+      status shouldBe StatusCodes.OK
+    }
+  }
+
+  test(
+    "DELETE /api/ingredients/{id} is rejected when a meal's direct-consumable line references it"
+  ) {
+    val db = freshDb()
+    val ingredientRepo = new IngredientRepository(db)
+    val recipeRepo = new RecipeRepository(db, ingredientRepo)
+    val pantryRepo = new PantryRepository(db)
+    val batchRepo = new BatchRepository(db, recipeRepo, pantryRepo)
+    val mealRepo = new MealRepository(db, batchRepo, recipeRepo, ingredientRepo)
+    val routes = Route.seal(IngredientRoutes(ingredientRepo))
+
+    val wine = Ingredient(
+      "Wine",
+      Nutrition(125, 0, 4, 0, 5).toOption.get,
+      directlyLoggable = true
+    ).toOption.get
+    val id = Await.result(ingredientRepo.create(wine), 5.seconds).id.get
+    Await.result(
+      mealRepo.create(
+        Meal(Instant.EPOCH, List(MealLine.DirectConsumableLine(id, 1, "each"))).toOption.get
+      ),
+      5.seconds
+    )
+
+    Delete(s"/api/ingredients/$id") ~> routes ~> check {
+      status shouldBe StatusCodes.BadRequest
     }
   }
