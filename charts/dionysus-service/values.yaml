@@ -21,10 +21,10 @@ image:
 
 env:
   # Path inside the container the SQLite file lives at — must match
-  # persistence.mountPath below (the image's working directory is
-  # /opt/docker, so the default DIONYSUS_DB_PATH of ./data/dionysus.db
-  # resolves to /opt/docker/data/dionysus.db).
-  dbPath: /opt/docker/data/dionysus.db
+  # persistence.mountPath below. /data is a dedicated Docker VOLUME
+  # (build.sbt) distinct from the app's own read-only WORKDIR
+  # (/opt/docker) — see build.sbt's dockerCommands comment for why.
+  dbPath: /data/dionysus.db
 
 persistence:
   # k3s's bundled dynamic provisioner. A different StorageClass may be
@@ -33,7 +33,7 @@ persistence:
   storageClass: local-path
   size: 1Gi
   accessMode: ReadWriteOnce
-  mountPath: /opt/docker/data
+  mountPath: /data
 
 service:
   type: ClusterIP

@@ -114,13 +114,27 @@ lazy val server = (project in file("server"))
     Docker / daemonUser := "dionysus",
     // HEALTHCHECK uses bash's /dev/tcp so no extra packages (wget/curl) are
     // needed. bash expands the HTTP_PORT override at runtime.
-    dockerCommands ++= Seq(
-      Cmd(
-        "HEALTHCHECK",
-        "--interval=10s --timeout=3s --start-period=20s --retries=5 CMD " +
-          """["bash","-c","exec 3<>/dev/tcp/127.0.0.1/${HTTP_PORT:-8080}; """ +
-          """printf 'GET /health HTTP/1.0\r\nHost: localhost\r\n\r\n' >&3; """ +
-          """grep -q '200 OK' <&3"]"""
-      )
+    //
+    // /data is created + chowned to the app user (as root, before the USER
+    // switch) and declared as a VOLUME. Without this, the app's default
+    // SQLite path resolves under /opt/docker, which sbt-native-packager
+    // hardens to read-only (u=rX,g=rX, no write bit) for the non-root
+    // runtime user — `mkdirs()` fails silently there, and Flyway's
+    // subsequent connection attempt fails with a confusing "path does not
+    // exist" error. A Kubernetes PVC mounted over that path masks the
+    // problem (the mount replaces the read-only directory with a writable
+    // one), which is why this only surfaced in a plain `docker run` with no
+    // volume — discovered via dionysus-planner's e2e-meal-log CI job.
+    dockerCommands := dockerCommands.value.flatMap {
+      case cmd @ Cmd("USER", "1001:0") =>
+        Seq(Cmd("RUN", "mkdir -p /data && chown dionysus:root /data"), Cmd("VOLUME", "/data"), cmd)
+      case other => Seq(other)
+    },
+    dockerCommands += Cmd(
+      "HEALTHCHECK",
+      "--interval=10s --timeout=3s --start-period=20s --retries=5 CMD " +
+        """["bash","-c","exec 3<>/dev/tcp/127.0.0.1/${HTTP_PORT:-8080}; """ +
+        """printf 'GET /health HTTP/1.0\r\nHost: localhost\r\n\r\n' >&3; """ +
+        """grep -q '200 OK' <&3"]"""
     )
   )

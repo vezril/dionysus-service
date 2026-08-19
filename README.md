@@ -16,7 +16,8 @@ HealthKit bridge yet (future phases).
 
 - **Layout**: `core/` (pure domain, no Pekko — types + math for ingredients, recipes, batches,
   meals, day rollups) and `server/` (Pekko HTTP routes, Slick/SQLite persistence, Docker).
-- **Data**: SQLite, file path from `dionysus.database.sqlite-path` (default `./data/dionysus.db`,
+- **Data**: SQLite, file path from `dionysus.database.sqlite-path` (default `/data/dionysus.db` in
+  the Docker image — `/data` is a declared `VOLUME`, writable by the non-root runtime user;
   override via `DIONYSUS_DB_PATH`). Schema is Flyway-migrated on startup from
   `server/src/main/resources/db/migration/`. Single-writer, single-instance by design — this is a
   personal app, not a multi-tenant service.
