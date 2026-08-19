@@ -29,6 +29,8 @@ object BatchRoutes extends JsonSupport:
 
   given RootJsonFormat[BatchRequest] = jsonFormat3(BatchRequest.apply)
   given RootJsonFormat[BatchResponse] = jsonFormat5(BatchResponse.apply)
+  // spray-json's Iterable/Seq formats are ambiguous for Scala 3 given resolution — pin List explicitly.
+  given RootJsonFormat[List[BatchResponse]] = listFormat[BatchResponse]
 
   private def fromRequest(req: BatchRequest): Either[String, Batch] =
     Try(Instant.parse(req.cookedAt)) match
@@ -51,29 +53,36 @@ object BatchRoutes extends JsonSupport:
     pathPrefix("api" / "batches") {
       concat(
         pathEndOrSingleSlash {
-          post {
-            entity(as[BatchRequest]) { body =>
-              fromRequest(body) match
-                case Left(err) => complete(StatusCodes.BadRequest -> ErrorResponse(err))
-                case Right(batch) =>
-                  onSuccess(repo.create(batch)) {
-                    case Left(err) => complete(StatusCodes.BadRequest -> ErrorResponse(err))
-                    case Right(created) =>
-                      onSuccess(
-                        repo.get(
-                          created.id.getOrElse(
-                            throw IllegalStateException("created batch has no id")
+          concat(
+            post {
+              entity(as[BatchRequest]) { body =>
+                fromRequest(body) match
+                  case Left(err) => complete(StatusCodes.BadRequest -> ErrorResponse(err))
+                  case Right(batch) =>
+                    onSuccess(repo.create(batch)) {
+                      case Left(err) => complete(StatusCodes.BadRequest -> ErrorResponse(err))
+                      case Right(created) =>
+                        onSuccess(
+                          repo.get(
+                            created.id.getOrElse(
+                              throw IllegalStateException("created batch has no id")
+                            )
                           )
-                        )
-                      ) {
-                        case Some(withRemaining) =>
-                          complete(StatusCodes.Created -> toResponse(withRemaining))
-                        case None =>
-                          throw IllegalStateException("batch vanished immediately after creation")
-                      }
-                  }
+                        ) {
+                          case Some(withRemaining) =>
+                            complete(StatusCodes.Created -> toResponse(withRemaining))
+                          case None =>
+                            throw IllegalStateException("batch vanished immediately after creation")
+                        }
+                    }
+              }
+            },
+            get {
+              onSuccess(repo.list()) { all =>
+                complete(all.map(toResponse).toList)
+              }
             }
-          }
+          )
         },
         path(LongNumber) { id =>
           concat(
