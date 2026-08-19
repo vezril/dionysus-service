@@ -22,8 +22,26 @@ final class IngredientRepository(db: Database)(using ExecutionContext):
   def update(id: Long, ingredient: Ingredient): Future[Boolean] =
     db.run(ingredients.filter(_.id === id).update(toRow(ingredient).copy(id = Some(id)))).map(_ > 0)
 
-  def delete(id: Long): Future[Boolean] =
-    db.run(ingredients.filter(_.id === id).delete).map(_ > 0)
+  /**
+   * Rejects (without deleting) if any recipe line or meal direct-consumable line still references
+   * this ingredient — deleting it out from under a reference left `GET /api/recipes` (which
+   * resolves every line's ingredient to compute nutrition) throwing a 500 for any recipe still
+   * pointing at the now-missing row. Mirrors `BatchRepository.delete`'s same discipline.
+   */
+  def delete(id: Long): Future[Either[String, Unit]] =
+    isReferenced(id).flatMap {
+      case true =>
+        Future.successful(Left("cannot delete an ingredient referenced by a recipe or meal"))
+      case false => db.run(ingredients.filter(_.id === id).delete).map(_ => Right(()))
+    }
+
+  private def isReferenced(id: Long): Future[Boolean] =
+    db.run(
+      sql"""SELECT
+              (EXISTS(SELECT 1 FROM recipe_line WHERE ingredient_id = $id))
+              OR (EXISTS(SELECT 1 FROM meal_line WHERE ingredient_id = $id))"""
+        .as[Boolean]
+    ).map(_.head)
 
   /**
    * True if `id` refers to an ingredient flagged `directlyLoggable`. Used by meal-logging to

@@ -48,3 +48,18 @@ The system SHALL assign each ingredient a unique system-generated ID at creation
 #### Scenario: Two ingredients with the same name are distinct
 - **WHEN** a client creates two ingredients both named "Onion" with different nutrition data
 - **THEN** the system creates two distinct ingredients with distinct IDs, and each is referenced independently
+
+### Requirement: Deleting an ingredient requires no dependent references
+The system SHALL reject deletion of an ingredient that is referenced by at least one recipe line or one meal direct-consumable line, to avoid leaving a dangling reference that would break nutrition resolution for that recipe or meal.
+
+#### Scenario: Deleting an unreferenced ingredient
+- **WHEN** a client deletes an ingredient that no recipe line or meal line references
+- **THEN** the system deletes the ingredient
+
+#### Scenario: Deleting an ingredient referenced by a recipe is rejected
+- **WHEN** a client attempts to delete an ingredient that at least one recipe line references
+- **THEN** the system rejects the request with a validation error, and the ingredient still exists afterward
+
+#### Scenario: Deleting an ingredient referenced by a meal is rejected
+- **WHEN** a client attempts to delete an ingredient that at least one meal's direct-consumable line references
+- **THEN** the system rejects the request with a validation error
