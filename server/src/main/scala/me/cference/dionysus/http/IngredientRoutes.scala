@@ -24,7 +24,10 @@ object IngredientRoutes extends JsonSupport:
       fatG: Double,
       sodiumMg: Double,
       abvPercent: Option[Double],
-      directlyLoggable: Boolean
+      directlyLoggable: Boolean,
+      // openspec: micronutrient-rollup — optional on requests (missing/null
+      // reads as empty), always echoed on responses.
+      micronutrients: Map[String, Double]
   )
 
   // Hand-written rather than jsonFormat9: `directlyLoggable` must default to false when the key
@@ -40,7 +43,8 @@ object IngredientRoutes extends JsonSupport:
       "fatG" -> obj.fatG.toJson,
       "sodiumMg" -> obj.sodiumMg.toJson,
       "abvPercent" -> obj.abvPercent.toJson,
-      "directlyLoggable" -> obj.directlyLoggable.toJson
+      "directlyLoggable" -> obj.directlyLoggable.toJson,
+      "micronutrients" -> obj.micronutrients.toJson
     )
 
     def read(json: JsValue): IngredientJson =
@@ -61,7 +65,9 @@ object IngredientRoutes extends JsonSupport:
         fatG = required[Double]("fatG"),
         sodiumMg = required[Double]("sodiumMg"),
         abvPercent = optField("abvPercent").map(_.convertTo[Double]),
-        directlyLoggable = optField("directlyLoggable").map(_.convertTo[Boolean]).getOrElse(false)
+        directlyLoggable = optField("directlyLoggable").map(_.convertTo[Boolean]).getOrElse(false),
+        micronutrients =
+          optField("micronutrients").map(_.convertTo[Map[String, Double]]).getOrElse(Map.empty)
       )
 
   // spray-json's Iterable/Seq formats are ambiguous for Scala 3 given resolution — pin List explicitly.
@@ -77,7 +83,8 @@ object IngredientRoutes extends JsonSupport:
       ingredient.nutrition.fatG,
       ingredient.nutrition.sodiumMg,
       ingredient.abvPercent,
-      ingredient.directlyLoggable
+      ingredient.directlyLoggable,
+      ingredient.nutrition.micronutrients
     )
 
   private def fromJson(json: IngredientJson): Either[String, Ingredient] =
@@ -87,7 +94,8 @@ object IngredientRoutes extends JsonSupport:
         json.proteinG,
         json.carbsG,
         json.fatG,
-        json.sodiumMg
+        json.sodiumMg,
+        json.micronutrients
       )
       ingredient <- Ingredient(json.name, nutrition, json.abvPercent, json.directlyLoggable)
     yield ingredient
