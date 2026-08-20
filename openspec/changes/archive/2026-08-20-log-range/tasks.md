@@ -1,0 +1,3 @@
+- [x] 1.1 MealRepository.listOnRange (single fetch, dayZone bucketing) + LogRoutes range endpoint (validation, cap) + JSON shape
+- [x] 1.2 Tests: bucketing across days, sparse days, timezone edge, guardrails
+- [x] 1.3 sbt gate; PR → development → :dev; homelab rollout restart
