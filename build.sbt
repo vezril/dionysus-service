@@ -44,6 +44,9 @@ lazy val pekkoHttpVersion = "1.2.0"
 lazy val scalaTestVersion = "3.2.19"
 lazy val logbackVersion = "1.5.16"
 lazy val logstashEncoderVersion = "8.0"
+lazy val slickVersion = "3.5.2"
+lazy val sqliteJdbcVersion = "3.46.1.3"
+lazy val flywayVersion = "10.20.1"
 
 // --- root: aggregate only, not published -------------------------------------
 lazy val root = (project in file("."))
@@ -76,6 +79,12 @@ lazy val server = (project in file("server"))
       "ch.qos.logback" % "logback-classic" % logbackVersion,
       // Structured JSON logs (the constellation log schema — see the add-structured-logging spec).
       "net.logstash.logback" % "logstash-logback-encoder" % logstashEncoderVersion,
+      // Persistence (openspec: meal-planning-health) — Slick over SQLite, Flyway-migrated.
+      // SQLite is a Flyway-core "file database" exception: no separate flyway-database-* module
+      // needed, just flyway-core + the JDBC driver.
+      "com.typesafe.slick" %% "slick" % slickVersion,
+      "org.xerial" % "sqlite-jdbc" % sqliteJdbcVersion,
+      "org.flywaydb" % "flyway-core" % flywayVersion,
       "org.apache.pekko" %% "pekko-actor-testkit-typed" % pekkoVersion % Test,
       "org.apache.pekko" %% "pekko-http-testkit" % pekkoHttpVersion % Test,
       "org.scalatest" %% "scalatest" % scalaTestVersion % Test
@@ -105,13 +114,27 @@ lazy val server = (project in file("server"))
     Docker / daemonUser := "dionysus",
     // HEALTHCHECK uses bash's /dev/tcp so no extra packages (wget/curl) are
     // needed. bash expands the HTTP_PORT override at runtime.
-    dockerCommands ++= Seq(
-      Cmd(
-        "HEALTHCHECK",
-        "--interval=10s --timeout=3s --start-period=20s --retries=5 CMD " +
-          """["bash","-c","exec 3<>/dev/tcp/127.0.0.1/${HTTP_PORT:-8080}; """ +
-          """printf 'GET /health HTTP/1.0\r\nHost: localhost\r\n\r\n' >&3; """ +
-          """grep -q '200 OK' <&3"]"""
-      )
+    //
+    // /data is created + chowned to the app user (as root, before the USER
+    // switch) and declared as a VOLUME. Without this, the app's default
+    // SQLite path resolves under /opt/docker, which sbt-native-packager
+    // hardens to read-only (u=rX,g=rX, no write bit) for the non-root
+    // runtime user — `mkdirs()` fails silently there, and Flyway's
+    // subsequent connection attempt fails with a confusing "path does not
+    // exist" error. A Kubernetes PVC mounted over that path masks the
+    // problem (the mount replaces the read-only directory with a writable
+    // one), which is why this only surfaced in a plain `docker run` with no
+    // volume — discovered via dionysus-planner's e2e-meal-log CI job.
+    dockerCommands := dockerCommands.value.flatMap {
+      case cmd @ Cmd("USER", "1001:0") =>
+        Seq(Cmd("RUN", "mkdir -p /data && chown dionysus:root /data"), Cmd("VOLUME", "/data"), cmd)
+      case other => Seq(other)
+    },
+    dockerCommands += Cmd(
+      "HEALTHCHECK",
+      "--interval=10s --timeout=3s --start-period=20s --retries=5 CMD " +
+        """["bash","-c","exec 3<>/dev/tcp/127.0.0.1/${HTTP_PORT:-8080}; """ +
+        """printf 'GET /health HTTP/1.0\r\nHost: localhost\r\n\r\n' >&3; """ +
+        """grep -q '200 OK' <&3"]"""
     )
   )

@@ -1,0 +1,63 @@
+# Default values for dionysus-service.
+#
+# NOTE: there is deliberately NO `replicaCount` field anywhere in this file
+# or the templates. The application's SQLite storage is single-writer —
+# running more than one replica against the same PersistentVolumeClaim will
+# corrupt the database. The Deployment template hardcodes replicas: 1. Do
+# not add a replica count override; if you need horizontal scale, this
+# service needs a different storage backend first.
+#
+# NOTE: this service has no authentication in its current phase. Only
+# deploy this on a private/internal network — do not enable ingress with a
+# publicly-reachable host.
+
+image:
+  repository: calvinference/dionysus
+  # Only :dev / :dev-<sha> are published so far (pushed on every merge to
+  # `development`). Switch this to a semver tag once a `vX.Y.Z` release is
+  # cut and published to Docker Hub.
+  tag: dev
+  # Always: `dev` is a MUTABLE tag (moved on every merge to development) —
+  # IfNotPresent left nodes running whatever image they'd cached, so new
+  # dev builds silently never rolled out. Drop to IfNotPresent if/when
+  # `tag` becomes an immutable semver release.
+  pullPolicy: Always
+
+env:
+  # Path inside the container the SQLite file lives at — must match
+  # persistence.mountPath below. /data is a dedicated Docker VOLUME
+  # (build.sbt) distinct from the app's own read-only WORKDIR
+  # (/opt/docker) — see build.sbt's dockerCommands comment for why.
+  dbPath: /data/dionysus.db
+  # IANA zone the day-log rollup groups meals by. MUST match the
+  # dionysus-planner deployment's DIONYSUS_TZ so both sides agree on where
+  # a calendar day begins. Empty = UTC.
+  timezone: ""
+
+persistence:
+  # k3s's bundled dynamic provisioner. A different StorageClass may be
+  # substituted, but note the local-path caveat in design.md: it binds the
+  # pod to whichever node first claims the volume.
+  storageClass: local-path
+  size: 1Gi
+  accessMode: ReadWriteOnce
+  mountPath: /data
+
+service:
+  type: ClusterIP
+  port: 8080
+
+resources:
+  requests:
+    cpu: 100m
+    memory: 256Mi
+  limits:
+    cpu: 500m
+    memory: 512Mi
+
+ingress:
+  enabled: false
+  className: traefik
+  host: ""
+  annotations: {}
+  tls: []
