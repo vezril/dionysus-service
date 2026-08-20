@@ -76,6 +76,17 @@ final class MealRepository(
     val end = date.plusDays(1).atStartOfDay(dayZone).toInstant
     listBetween(start, end)
 
+  /**
+   * openspec: log-range — every meal in the inclusive [from, to] range, bucketed per local date
+   * with the SAME zone rule as `listOnDate`.
+   */
+  def listOnRange(from: LocalDate, to: LocalDate): Future[Map[LocalDate, Seq[Meal]]] =
+    val start = from.atStartOfDay(dayZone).toInstant
+    val end = to.plusDays(1).atStartOfDay(dayZone).toInstant
+    listBetween(start, end).map { meals =>
+      meals.groupBy(meal => meal.eatenAt.atZone(dayZone).toLocalDate)
+    }
+
   def totalNutrition(meal: Meal): Future[Nutrition] =
     val batchIds = meal.lines.collect { case MealLine.BatchPortionLine(batchId, _) =>
       batchId
