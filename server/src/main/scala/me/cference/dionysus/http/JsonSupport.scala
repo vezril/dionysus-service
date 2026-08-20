@@ -16,7 +16,9 @@ final case class NutritionJson(
     proteinG: Double,
     carbsG: Double,
     fatG: Double,
-    sodiumMg: Double
+    sodiumMg: Double,
+    // openspec: micronutrient-rollup — always written (possibly empty).
+    micronutrients: Map[String, Double]
 )
 
 /**
@@ -25,7 +27,7 @@ final case class NutritionJson(
  */
 trait JsonSupport extends SprayJsonSupport with DefaultJsonProtocol:
   given RootJsonFormat[ErrorResponse] = jsonFormat1(ErrorResponse.apply)
-  given RootJsonFormat[NutritionJson] = jsonFormat5(NutritionJson.apply)
+  given RootJsonFormat[NutritionJson] = jsonFormat6(NutritionJson.apply)
 
   def toJson(nutrition: Nutrition): NutritionJson =
     NutritionJson(
@@ -33,5 +35,6 @@ trait JsonSupport extends SprayJsonSupport with DefaultJsonProtocol:
       nutrition.proteinG,
       nutrition.carbsG,
       nutrition.fatG,
-      nutrition.sodiumMg
+      nutrition.sodiumMg,
+      nutrition.micronutrients
     )

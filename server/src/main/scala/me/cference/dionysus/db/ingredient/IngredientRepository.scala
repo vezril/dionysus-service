@@ -6,21 +6,50 @@ import slick.jdbc.SQLiteProfile.api.*
 import scala.concurrent.{ExecutionContext, Future}
 
 final class IngredientRepository(db: Database)(using ExecutionContext):
+  import IngredientMicronutrientTable.micronutrients
   import IngredientTable.ingredients
 
   def create(ingredient: Ingredient): Future[Ingredient] =
-    val insertQuery = (ingredients returning ingredients.map(_.id)) += toRow(ingredient)
-    db.run(insertQuery).map(ingredient.withId)
+    // openspec: micronutrient-rollup — the ingredient row and its sparse
+    // micronutrient rows land in one transaction.
+    val action = for
+      newId <- (ingredients returning ingredients.map(_.id)) += toRow(ingredient)
+      _ <- micronutrients ++= microRows(newId, ingredient)
+    yield newId
+    db.run(action.transactionally).map(ingredient.withId)
 
   def get(id: Long): Future[Option[Ingredient]] =
-    db.run(ingredients.filter(_.id === id).result.headOption).map(_.map(fromRow))
+    val action = for
+      row <- ingredients.filter(_.id === id).result.headOption
+      micros <- micronutrients.filter(_.ingredientId === id).result
+    yield row.map(fromRow(_, micros))
+    db.run(action)
 
   def list(): Future[Seq[Ingredient]] =
-    db.run(ingredients.result).map(_.map(fromRow))
+    val action = for
+      rows <- ingredients.result
+      micros <- micronutrients.result
+    yield
+      val byIngredient = micros.groupBy(_.ingredientId)
+      rows.map(row => fromRow(row, byIngredient.getOrElse(row.id.getOrElse(-1L), Seq.empty)))
+    db.run(action)
 
-  /** Overwrites every field of the ingredient at `id`. Returns `false` if no such row exists. */
+  /**
+   * Overwrites every field of the ingredient at `id`, replace-setting its micronutrient rows in the
+   * same transaction. Returns `false` if no such row exists.
+   */
   def update(id: Long, ingredient: Ingredient): Future[Boolean] =
-    db.run(ingredients.filter(_.id === id).update(toRow(ingredient).copy(id = Some(id)))).map(_ > 0)
+    val action = for
+      updated <- ingredients.filter(_.id === id).update(toRow(ingredient).copy(id = Some(id)))
+      _ <-
+        if updated > 0 then
+          for
+            _ <- micronutrients.filter(_.ingredientId === id).delete
+            _ <- micronutrients ++= microRows(id, ingredient)
+          yield ()
+        else DBIO.successful(())
+    yield updated > 0
+    db.run(action.transactionally)
 
   /**
    * Rejects (without deleting) if any recipe line or meal direct-consumable line still references
@@ -33,11 +62,12 @@ final class IngredientRepository(db: Database)(using ExecutionContext):
       case true =>
         Future.successful(Left("cannot delete an ingredient referenced by a recipe or meal"))
       case false =>
-        // pantry_stock's PK references ingredient(id); with foreign_keys=ON
-        // (Db.open) the stock row must go in the same transaction or the
-        // ingredient delete itself would trip the FK.
+        // pantry_stock's PK (and micronutrient rows) reference ingredient(id);
+        // with foreign_keys=ON (Db.open) they must go in the same transaction
+        // or the ingredient delete itself would trip the FK.
         val action = for
           _ <- sqlu"DELETE FROM pantry_stock WHERE ingredient_id = $id"
+          _ <- micronutrients.filter(_.ingredientId === id).delete
           _ <- ingredients.filter(_.id === id).delete
         yield ()
         db.run(action.transactionally).map(Right(_))
@@ -74,11 +104,22 @@ final class IngredientRepository(db: Database)(using ExecutionContext):
       i.directlyLoggable
     )
 
-  private def fromRow(r: IngredientRow): Ingredient =
-    val nutrition = Nutrition(r.caloriesKcal, r.proteinG, r.carbsG, r.fatG, r.sodiumMg)
-      .getOrElse(
-        throw IllegalStateException(s"Corrupt ingredient row id=${r.id}: invalid nutrition")
-      )
+  private def microRows(ingredientId: Long, i: Ingredient): Seq[IngredientMicronutrientRow] =
+    i.nutrition.micronutrients.toSeq.map { case (key, amount) =>
+      IngredientMicronutrientRow(ingredientId, key, amount)
+    }
+
+  private def fromRow(r: IngredientRow, micros: Seq[IngredientMicronutrientRow]): Ingredient =
+    val nutrition = Nutrition(
+      r.caloriesKcal,
+      r.proteinG,
+      r.carbsG,
+      r.fatG,
+      r.sodiumMg,
+      micros.map(m => m.nutrientKey -> m.amount).toMap
+    ).getOrElse(
+      throw IllegalStateException(s"Corrupt ingredient row id=${r.id}: invalid nutrition")
+    )
     Ingredient.fromPersisted(
       r.id.getOrElse(throw IllegalStateException("ingredient row missing id")),
       r.name,

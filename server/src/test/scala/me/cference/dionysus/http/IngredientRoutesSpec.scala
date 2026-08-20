@@ -43,7 +43,7 @@ final class IngredientRoutesSpec
   }
 
   test("POST /api/ingredients rejects a negative sodiumMg") {
-    val toCreate = IngredientJson(None, "Onion", 40, 1.1, 9, 0.1, -1, None, false)
+    val toCreate = IngredientJson(None, "Onion", 40, 1.1, 9, 0.1, -1, None, false, Map.empty)
     Post("/api/ingredients", toCreate) ~> freshRoutes ~> check {
       status shouldBe StatusCodes.BadRequest
     }
@@ -63,7 +63,8 @@ final class IngredientRoutesSpec
 
   test("POST then GET round-trips a valid ingredient") {
     val routes = freshRoutes
-    val toCreate = IngredientJson(None, "Onion", 40, 1.1, 9, 0.1, 4, None, directlyLoggable = false)
+    val toCreate =
+      IngredientJson(None, "Onion", 40, 1.1, 9, 0.1, 4, None, directlyLoggable = false, Map.empty)
     Post("/api/ingredients", toCreate) ~> routes ~> check {
       status shouldBe StatusCodes.Created
       val created = responseAs[IngredientJson]
@@ -81,7 +82,7 @@ final class IngredientRoutesSpec
     val routes = freshRoutes
     Post(
       "/api/ingredients",
-      IngredientJson(None, "Onion", 40, 1.1, 9, 0.1, 4, None, false)
+      IngredientJson(None, "Onion", 40, 1.1, 9, 0.1, 4, None, false, Map.empty)
     ) ~> routes ~> check {
       status shouldBe StatusCodes.Created
     }
@@ -101,12 +102,23 @@ final class IngredientRoutesSpec
     val routes = freshRoutes
     val id = Post(
       "/api/ingredients",
-      IngredientJson(None, "Onion", 40, 1.1, 9, 0.1, 4, None, false)
+      IngredientJson(None, "Onion", 40, 1.1, 9, 0.1, 4, None, false, Map.empty)
     ) ~> routes ~> check {
       responseAs[IngredientJson].id.get
     }
     val updated =
-      IngredientJson(None, "Red Onion", 44, 1.2, 10, 0.1, 5, None, directlyLoggable = true)
+      IngredientJson(
+        None,
+        "Red Onion",
+        44,
+        1.2,
+        10,
+        0.1,
+        5,
+        None,
+        directlyLoggable = true,
+        Map.empty
+      )
     Put(s"/api/ingredients/$id", updated) ~> routes ~> check {
       status shouldBe StatusCodes.OK
       responseAs[IngredientJson].name shouldBe "Red Onion"
@@ -120,7 +132,7 @@ final class IngredientRoutesSpec
     val routes = freshRoutes
     val id = Post(
       "/api/ingredients",
-      IngredientJson(None, "Onion", 40, 1.1, 9, 0.1, 4, None, false)
+      IngredientJson(None, "Onion", 40, 1.1, 9, 0.1, 4, None, false, Map.empty)
     ) ~> routes ~> check {
       responseAs[IngredientJson].id.get
     }
