@@ -13,15 +13,11 @@
 
 image:
   repository: calvinference/dionysus
-  # Only :dev / :dev-<sha> are published so far (pushed on every merge to
-  # `development`). Switch this to a semver tag once a `vX.Y.Z` release is
-  # cut and published to Docker Hub.
-  tag: dev
-  # Always: `dev` is a MUTABLE tag (moved on every merge to development) —
-  # IfNotPresent left nodes running whatever image they'd cached, so new
-  # dev builds silently never rolled out. Drop to IfNotPresent if/when
-  # `tag` becomes an immutable semver release.
-  pullPolicy: Always
+  # Pinned semver release (immutable on Docker Hub — the release workflow
+  # refuses to overwrite one). Bump per release; if you ever point this
+  # back at the mutable `dev` tag, switch pullPolicy back to Always.
+  tag: 0.1.0
+  pullPolicy: IfNotPresent
 
 env:
   # Path inside the container the SQLite file lives at — must match
