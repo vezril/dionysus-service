@@ -13,4 +13,4 @@
 ## 3. Verification
 
 - [x] 3.1 `sbt scalafmtAll compile test` green
-- [ ] 3.2 Ship: PR to development → :dev image → verify against a live container → release tag + helm upgrade on the homelab
+- [x] 3.2 Ship: PR to development → :dev image → verify against a live container → release tag + helm upgrade on the homelab
