@@ -17,7 +17,11 @@ image:
   # `development`). Switch this to a semver tag once a `vX.Y.Z` release is
   # cut and published to Docker Hub.
   tag: dev
-  pullPolicy: IfNotPresent
+  # Always: `dev` is a MUTABLE tag (moved on every merge to development) —
+  # IfNotPresent left nodes running whatever image they'd cached, so new
+  # dev builds silently never rolled out. Drop to IfNotPresent if/when
+  # `tag` becomes an immutable semver release.
+  pullPolicy: Always
 
 env:
   # Path inside the container the SQLite file lives at — must match
